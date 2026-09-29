@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, vi } from 'vitest'
 
@@ -164,7 +164,9 @@ describe('Signup screen', () => {
     render(<App />)
 
     expect(await screen.findByRole('heading', { name: /transfer money/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /new transfer process/i })).toBeInTheDocument()
 
+    await waitFor(() => expect(screen.getByLabelText(/source account/i)).toBeEnabled())
     await user.selectOptions(screen.getByLabelText(/source account/i), 'ACC-1001')
     await user.clear(screen.getByLabelText(/to account/i))
     await user.type(screen.getByLabelText(/to account/i), 'BEN-1001')
@@ -174,5 +176,97 @@ describe('Signup screen', () => {
     await user.click(screen.getByRole('button', { name: /submit transfer/i }))
 
     expect(await screen.findByText(/transfer processed successfully/i)).toBeInTheDocument()
+  })
+
+  it('blocks submission and shows errors when required fields are missing', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('securebank-auth', JSON.stringify({
+      id: 'u-123',
+      fullName: 'Jane Doe',
+      email: 'jane.doe@example.com',
+    }))
+    vi.mocked(getAccounts).mockResolvedValueOnce({ success: true, accounts: [] })
+    vi.mocked(getRecipients).mockResolvedValueOnce({ success: true, recipients: [] })
+    window.history.pushState({}, '', '/transfer')
+
+    render(<App />)
+
+    await user.click(await screen.findByRole('button', { name: /submit transfer/i }))
+
+    expect(await screen.findByText(/please select a source account/i)).toBeInTheDocument()
+    expect(screen.getByText(/please enter a recipient account number or email address/i)).toBeInTheDocument()
+    expect(screen.getByText(/amount is required/i)).toBeInTheDocument()
+    expect(submitTransfer).not.toHaveBeenCalled()
+  })
+
+  it('blocks a zero-value transfer', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('securebank-auth', JSON.stringify({
+      id: 'u-123',
+      fullName: 'Jane Doe',
+      email: 'jane.doe@example.com',
+    }))
+    vi.mocked(getAccounts).mockResolvedValueOnce({
+      success: true,
+      accounts: [{ id: 'ACC-1001', type: 'Checking', balance: 2450.75, currency: 'USD', status: 'active' }],
+    })
+    vi.mocked(getRecipients).mockResolvedValueOnce({ success: true, recipients: [] })
+    window.history.pushState({}, '', '/transfer')
+
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByLabelText(/source account/i)).toBeEnabled())
+    await user.selectOptions(screen.getByLabelText(/source account/i), 'ACC-1001')
+    await user.type(screen.getByLabelText(/to account/i), 'ACC-3001')
+    await user.type(screen.getByLabelText(/amount/i), '0')
+    await user.click(screen.getByRole('button', { name: /submit transfer/i }))
+
+    expect(await screen.findByText(/amount must be greater than zero/i)).toBeInTheDocument()
+    expect(submitTransfer).not.toHaveBeenCalled()
+  })
+
+  it('shows a transfer error and allows retrying after the API fails', async () => {
+    const user = userEvent.setup()
+    sessionStorage.setItem('securebank-auth', JSON.stringify({
+      id: 'u-123',
+      fullName: 'Jane Doe',
+      email: 'jane.doe@example.com',
+    }))
+    vi.mocked(getAccounts).mockResolvedValueOnce({
+      success: true,
+      accounts: [{ id: 'ACC-1001', type: 'Checking', balance: 2450.75, currency: 'USD', status: 'active' }],
+    })
+    vi.mocked(getRecipients).mockResolvedValueOnce({ success: true, recipients: [] })
+    vi.mocked(submitTransfer)
+      .mockRejectedValueOnce(new Error('INSUFFICIENT_FUNDS:Not enough funds in this account.'))
+      .mockResolvedValueOnce({
+        success: true,
+        message: 'Transfer processed successfully',
+        transfer: {
+          id: 'TRF-1002',
+          fromAccountId: 'ACC-1001',
+          toAccountId: 'ACC-3001',
+          amount: 150,
+          currency: 'USD',
+          status: 'completed',
+          createdAt: '2026-09-28T10:15:00Z',
+        },
+      })
+    window.history.pushState({}, '', '/transfer')
+
+    render(<App />)
+
+    await waitFor(() => expect(screen.getByLabelText(/source account/i)).toBeEnabled())
+    await user.selectOptions(screen.getByLabelText(/source account/i), 'ACC-1001')
+    await user.type(screen.getByLabelText(/to account/i), 'ACC-3001')
+    await user.type(screen.getByLabelText(/amount/i), '150')
+    await user.click(screen.getByRole('button', { name: /submit transfer/i }))
+
+    expect(await screen.findByText(/not enough funds in this account/i)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /submit transfer/i }))
+
+    expect(await screen.findByText(/transfer processed successfully/i)).toBeInTheDocument()
+    expect(submitTransfer).toHaveBeenCalledTimes(2)
   })
 })
