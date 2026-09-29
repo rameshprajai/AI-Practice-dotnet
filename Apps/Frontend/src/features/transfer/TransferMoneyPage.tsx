@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useForm } from 'react-hook-form'
 
-import { getStoredSession, navigateTo } from '../auth/session'
+import { navigateTo } from '../auth/session'
 import { getAccounts, getRecipients, submitTransfer } from './api'
 import type { AccountSummary, RecipientSummary, TransferFormValues } from './types'
 import { transferSchema } from './validation'
@@ -104,11 +104,6 @@ function TransferMoneyPage() {
 
   const formValues = watch()
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/transfer'
-  const user = getStoredSession() ?? {
-    id: 'mock-user-001',
-    fullName: 'John Doe',
-    email: 'john.doe@example.com',
-  }
 
   useEffect(() => {
     const loadTransferData = async () => {
@@ -206,13 +201,6 @@ function TransferMoneyPage() {
     }
   }
 
-  const onCancel = () => {
-    setReviewMode(false)
-    clearErrors('root')
-    reset(defaultValues)
-    navigateTo('/dashboard')
-  }
-
   const handleRecipientPick = (recipientAccount: string) => {
     setValue('toAccountId', recipientAccount, {
       shouldDirty: true,
@@ -272,7 +260,7 @@ function TransferMoneyPage() {
 
         <div className="transfer-card">
           <div className="transfer-card-header">
-            <h2 style={{color: 'Blue'}}> New Transfer Process</h2>
+            <h2>New Transfer Process</h2>
             <p>Enter transfer details below</p>
           </div>
 
