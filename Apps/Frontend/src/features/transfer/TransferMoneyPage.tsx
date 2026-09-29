@@ -272,7 +272,7 @@ function TransferMoneyPage() {
 
         <div className="transfer-card">
           <div className="transfer-card-header">
-            <h2>New Transfer</h2>
+            <h2 style={{color: 'Blue'}}> New Transfer Process</h2>
             <p>Enter transfer details below</p>
           </div>
 
